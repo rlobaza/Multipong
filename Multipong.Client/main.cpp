@@ -3,193 +3,285 @@
 #include "SFML/System.hpp"
 #include "SFML/Window.hpp"
 
-#include <vector>;
-#include <iostream>;
-
+#include <vector>
+#include <iostream>
 
 class Simulatable // interface
 {
 public:
 	Simulatable() = default;
 	~Simulatable() = default;
-	virtual void simulate(float& delta_time) = 0;
-	virtual void draw(sf::RenderWindow& window) = 0;
+	virtual void simulate(float& fixed_delta) = 0;
+	virtual void draw(sf::RenderWindow& window, float& alfa_time) = 0;
 };
 
-struct Input
+enum class PacketType
 {
+	InputPacket
+};
+
+struct InputPacket
+{
+	PacketType type = PacketType::InputPacket;
+	int player_index = 0;
 	bool w = false;
 	bool s = false;
 };
+
+class Ball;
 
 class Paddle : public Simulatable
 {
 private:
 	sf::RectangleShape shape_;
-	Input input_;
-	float speed_ = 100; // px/s;
+	float vmax_ = 500; // px/s
+	float velocity_y_ = 0; // px/s
 	sf::Vector2f pos_;
+	sf::Vector2f previous_pos_;
+
+	friend bool checkCollision(Paddle& player, Ball& ball);
 
 public:
-	Paddle(float pos_x) : pos_({ pos_x, 0.0f })
+	Paddle(float pos_x, sf::Color color) : pos_({ pos_x, 390.0f })
 	{
 		shape_ = sf::RectangleShape(sf::Vector2f{ 50.0f, 300.0f });
 		shape_.setPosition(pos_);
-		shape_.setFillColor(sf::Color::Cyan);
+		shape_.setFillColor(color);
 	}
 
 	~Paddle() = default;
 
-	void simulate(float& delta_time)
+	virtual void simulate(float& fixed_delta)
 	{
-		if (input_.w && !input_.s)
-		{
-			pos_.y -= speed_ * delta_time;
-		}
-		else if (input_.s && !input_.w)
-		{
-			pos_.y += speed_ * delta_time;
-		}
-		else
-		{
+		previous_pos_ = pos_;
+		pos_.y += velocity_y_ * fixed_delta;
 
+		if (pos_.y < 0)
+		{
+			pos_.y = 0;
+		}
+		else if (pos_.y > 1080 - shape_.getSize().y)
+		{
+			pos_.y = 1080 - shape_.getSize().y;
 		}
 
-		shape_.setPosition(pos_);
+		moveStop();
 	}
 
 	void moveUp()
 	{
-		input_.w = true;
-		input_.s = false;
-		std::cout << "moving up" << std::endl;
+		velocity_y_ = -vmax_;
 	}
 
 	void moveDown()
 	{
-		input_.w = false;
-		input_.s = true;
-		std::cout << "moving down" << std::endl;
+		velocity_y_ = vmax_;
 	}
 
 	void moveStop()
 	{
-		input_.w = false;
-		input_.s = false;
-		std::cout << "stopped" << std::endl;
+		velocity_y_ = 0;
 	}
 
-	void draw(sf::RenderWindow& window)
+	virtual void draw(sf::RenderWindow& window, float& alfa_time)
 	{
+		shape_.setPosition(pos_ + ((pos_ - previous_pos_) * alfa_time));
 		window.draw(shape_);
 	}
 };
 
-struct Context
+class Ball : public Simulatable
 {
-	std::vector<Simulatable*> sims;
-	sf::RenderWindow window;
-	float delta_time = 0.001f;
+private:
+	sf::CircleShape shape_;
+	sf::Vector2f velocity_;
+	sf::Vector2f pos_;
+	sf::Vector2f previous_pos_;
 
-	Paddle* player_1 = nullptr;
-	Paddle* player_2 = nullptr;
+	friend bool checkCollision(Paddle& player, Ball& ball);
 
-	Context()
+public:
+	Ball()
 	{
-		sf::VideoMode mode(sf::Vector2u{ 1920, 1080 }, 32U);
-		window = sf::RenderWindow(mode, "Multipong", sf::Style::Default, sf::State::Windowed);
+		shape_.setRadius(20.0f);
+		shape_.setFillColor(sf::Color::White);
+		centerPosition();
+		resetVelocity();
 	}
 
-	~Context() = default;
+	~Ball() = default;
+
+	virtual void simulate(float& fixed_delta)
+	{
+		previous_pos_ = pos_;
+		pos_ += velocity_ * fixed_delta;
+
+		if (pos_.y <= 0)
+		{
+			pos_.y = 0;
+			changeDirectionY();
+		}
+		if (pos_.y >= 1080 - (shape_.getRadius() * 2))
+		{
+			pos_.y = 1080 - (shape_.getRadius() * 2);
+			changeDirectionY();
+		}
+	}
+
+	virtual void draw(sf::RenderWindow& window, float& alfa_time)
+	{
+		shape_.setPosition(pos_ + ((pos_ - previous_pos_) * alfa_time));
+		window.draw(shape_);
+	}
+
+	int checkScore()
+	{
+		if (pos_.x <= 0 - shape_.getRadius())
+		{
+			centerPosition();
+			return 2;
+		}
+		if (pos_.x >= 1920 + shape_.getRadius())
+		{
+			centerPosition();
+			return 1;
+		}
+	}
+
+	void centerPosition()
+	{
+		pos_ = sf::Vector2f{ (1920.0f - shape_.getRadius() * 2) / 2, (1080.0f - shape_.getRadius() * 2) / 2 };
+		previous_pos_ = pos_;
+	}
+
+	void changeDirectionX()
+	{
+		velocity_.x = -1 * velocity_.x;
+	}
+
+	void changeDirectionY()
+	{
+		velocity_.y = -1 * velocity_.y;
+	}
+
+	void speedUp()
+	{
+		velocity_.x = 1.1f * velocity_.x;
+	}
+
+	void resetVelocity()
+	{
+		velocity_ = sf::Vector2f{ 400.0f, 200.0f };
+	}
 };
 
-enum class Status
+bool checkCollision(Paddle& player, Ball& ball)
 {
-	Success,
-	Failure
-};
+	if (player.shape_.getGlobalBounds().findIntersection(ball.shape_.getGlobalBounds()))
+		return true;
+	else
+		return false;
+}
 
 class Game
 {
 private:
-	Context context_;
-	int controlled = 1;
+
+	Paddle* player_1_ = nullptr;
+	Paddle* player_2_ = nullptr;
+
+	int score_p1_ = 0;
+	int score_p2_ = 0;
+
+	Ball* ball = nullptr;
+
+	bool last_collision_check_ = false;
 
 public:
-	Game() = default;
-	~Game() = default;
-
-	sf::RenderWindow& getWindow() { return context_.window; }
-
-	void simulateAll()
+	Game()
 	{
-		for (int i = 0; i < context_.sims.size(); i++)
-		{
-			context_.sims[i]->simulate(context_.delta_time);
-		}
+		player_1_ = new Paddle(0.0f, sf::Color::Cyan);
+		player_2_ = new Paddle(1870.0f, sf::Color::Magenta);
+		ball = new Ball;
 	}
 
-	void drawAll()
+	~Game()
 	{
-		for (int i = 0; i < context_.sims.size(); i++)
-		{
-			context_.sims[i]->draw(context_.window);
-		}
+		delete player_1_;
+		player_1_ = nullptr;
+
+		delete player_2_;
+		player_2_ = nullptr;
+
+		delete ball;
+		ball = nullptr;
 	}
 
-	Status addPlayer()
+	void simulate(float delta_time)
 	{
-		if (!context_.player_1)
-		{
-			context_.player_1 = new Paddle(0.0f);
-			context_.sims.push_back(context_.player_1);
-			return Status::Success;
-		}
-		else if (!context_.player_2)
-		{
-			context_.player_2 = new Paddle(context_.window.getSize().x - 50);
-			context_.sims.push_back(context_.player_2);
-			return Status::Success;
-		}
-		else
-		{
-			return Status::Failure;
-		}
-	}
+		player_1_->simulate(delta_time);
+		player_2_->simulate(delta_time);
+		ball->simulate(delta_time);
 
-	void inputPlayer()
-	{
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))
+		if (ball->checkScore() == 1)
 		{
-			if (controlled == 1)
-			{
-				context_.player_1->moveUp();
-			}
-			if (controlled == 2)
-			{
-				context_.player_2->moveUp();
-			}
+			score_p1_++;
+			ball->resetVelocity();
 		}
-		else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
+		if (ball->checkScore() == 2)
 		{
-			if (controlled == 1)
+			score_p2_++;
+			ball->resetVelocity();
+		}
+		
+		if (checkCollision(*player_1_, *ball) || checkCollision(*player_2_, *ball))
+		{
+			if (!last_collision_check_)
 			{
-				context_.player_1->moveDown();
-			}
-			if (controlled == 2)
-			{
-				context_.player_2->moveDown();
+				ball->changeDirectionX();
+				ball->speedUp();
+				last_collision_check_ = true;
 			}
 		}
 		else
 		{
-			if (controlled == 1)
+			last_collision_check_ = false;
+		}
+	}
+
+	void draw(sf::RenderWindow& window, float& alfa_time)
+	{
+		player_1_->draw(window, alfa_time);
+		player_2_->draw(window, alfa_time);
+		ball->draw(window, alfa_time);
+	}
+
+	void takeInput(InputPacket packet)
+	{
+		if (packet.player_index == 1)
+		{
+			if (packet.w)
 			{
-				context_.player_1->moveStop();
+				player_1_->moveUp();
+				return;
 			}
-			if (controlled == 2)
+			else if (packet.s)
 			{
-				context_.player_2->moveStop();
+				player_1_->moveDown();
+				return;
+			}
+		}
+		else if (packet.player_index == 2)
+		{
+			if (packet.w)
+			{
+				player_2_->moveUp();
+				return;
+			}
+			else if (packet.s)
+			{
+				player_2_->moveDown();
+				return;
 			}
 		}
 	}
@@ -197,28 +289,86 @@ public:
 
 int main()
 {
-	Game game;
-	game.addPlayer();
-	//game.addPlayer();
+	sf::VideoMode mode(sf::Vector2u{ 1920, 1080 }, 32U);
+	sf::RenderWindow window(mode, "Multipong", sf::Style::Close, sf::State::Windowed);
+	window.setVerticalSyncEnabled(true);
 
-	while (game.getWindow().isOpen())
+	sf::Clock clk;
+
+	float simulation_fps = 60.0f;
+	float fixed_delta = 1.0f / simulation_fps;
+
+	float accumulator = 0;
+
+	Game game;
+
+	InputPacket packet_p1;
+	InputPacket packet_p2;
+	packet_p1.player_index = 1;
+	packet_p2.player_index = 2;
+
+	while (window.isOpen())
 	{
-		while (const std::optional event = game.getWindow().pollEvent())
+		float delta_time = clk.restart().asSeconds();
+
+		while (const std::optional event = window.pollEvent())
 		{
 			if (event->is<sf::Event::Closed>())
 			{
-				game.getWindow().close();
+				window.close();
 			}
 		}
 
-		game.inputPlayer();
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))
+		{
+			packet_p1.w = true;
+		}
+		else
+		{
+			packet_p1.w = false;
+		}
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
+		{
+			packet_p1.s = true;
+		}
+		else
+		{
+			packet_p1.s = false;
+		}
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up))
+		{
+			packet_p2.w = true;
+		}
+		else
+		{
+			packet_p2.w = false;
+		}
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down))
+		{
+			packet_p2.s = true;
+		}
+		else
+		{
+			packet_p2.s = false;
+		}
 
-		game.getWindow().clear();
+		window.clear(sf::Color::Black);
 
-		game.simulateAll();
-		game.drawAll();
+		accumulator += delta_time;
 
-		game.getWindow().display();
+		while (accumulator > fixed_delta)
+		{
+			game.takeInput(packet_p1);
+			game.takeInput(packet_p2);
+
+			game.simulate(fixed_delta);
+			accumulator -= fixed_delta;
+		}
+
+		float alfa_time = accumulator / fixed_delta;
+		game.draw(window, alfa_time);
+
+		window.display();
 	}
 
 	return 0;
