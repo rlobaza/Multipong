@@ -5,14 +5,57 @@
 
 #include <vector>
 #include <iostream>
+#include <filesystem>
+
+enum class ViewType
+{
+	MainMenu,
+	NewGame,
+	JoinGame,
+	PlayGame,
+	Pause,
+	Unknown
+};
 
 class Simulatable // interface
 {
 public:
 	Simulatable() = default;
-	~Simulatable() = default;
+	virtual ~Simulatable() = default;
 	virtual void simulate(float& fixed_delta) = 0;
+};
+
+class Drawable // interface
+{
+public:
+	Drawable() = default;
+	virtual ~Drawable() = default;
 	virtual void draw(sf::RenderWindow& window, float& alfa_time) = 0;
+};
+
+class Interactive // interface
+{
+public:
+	Interactive() = default;
+	virtual ~Interactive() = default;
+	virtual void onClick() = 0;
+	virtual void hoveredOver(sf::Vector2f& mouse_position) = 0;
+};
+
+class View
+{
+protected:
+	std::vector<Simulatable*> simulatables_;
+	std::vector<Drawable*> drawables_;
+	std::vector<Interactive*> interactives_;
+
+	ViewType type = ViewType::Unknown;
+
+public:
+	View() = default;
+	virtual ~View() = default;
+
+	ViewType getType() { return type; }
 };
 
 enum class PacketType
@@ -30,7 +73,7 @@ struct InputPacket
 
 class Ball;
 
-class Paddle : public Simulatable
+class Paddle : public Simulatable, public Drawable
 {
 private:
 	sf::RectangleShape shape_;
@@ -90,7 +133,7 @@ public:
 	}
 };
 
-class Ball : public Simulatable
+class Ball : public Simulatable, public Drawable
 {
 private:
 	sf::CircleShape shape_;
@@ -183,10 +226,170 @@ bool checkCollision(Paddle& player, Ball& ball)
 		return false;
 }
 
-class Game
+class Button : public Drawable, public Interactive
 {
 private:
+	sf::RectangleShape shape_;
+	sf::Font font_;
+	sf::Text text_;
 
+public:
+	Button(sf::Vector2f position, sf::Vector2f size, std::string text, sf::Color color) : font_(sf::Font("Fonts/Scifi2k2.ttf")), text_(sf::Text(font_, text, size.y - size.y / 2))
+	{
+		shape_.setPosition(position);
+		shape_.setSize(size);
+		shape_.setFillColor(color);
+
+		text_.setOrigin(text_.getLocalBounds().getCenter());
+		text_.setPosition(shape_.getGlobalBounds().getCenter());
+
+		dimDown();
+	}
+
+	virtual ~Button() = default;
+
+	void draw(sf::RenderWindow& window, float& alfa_time)
+	{
+		window.draw(shape_);
+		window.draw(text_);
+	}
+
+	void onClick()
+	{
+
+	}
+
+	void hoveredOver(sf::Vector2f& mouse_position)
+	{
+		if (shape_.getGlobalBounds().contains(mouse_position))
+		{
+			lightUp();
+		}
+		else
+		{
+			dimDown();
+		}
+	}
+
+	void lightUp()
+	{
+		sf::Color color = shape_.getFillColor();
+		color.a = 200;
+		shape_.setFillColor(color);
+
+		sf::Color text_color = text_.getFillColor();
+		text_color.a = 255;
+		text_.setFillColor(text_color);
+	}
+
+	void dimDown()
+	{
+		sf::Color color = shape_.getFillColor();
+		color.a = 155;
+		shape_.setFillColor(color);
+
+		sf::Color text_color = text_.getFillColor();
+		text_color.a = 155;
+		text_.setFillColor(text_color);
+	}
+};
+
+class MainMenu : public View
+{
+public:
+	MainMenu()
+	{
+		type = ViewType::MainMenu;
+	}
+
+	~MainMenu() = default;
+};
+
+class NewGame : public View
+{
+public:
+	NewGame()
+	{
+		type = ViewType::NewGame;
+	}
+
+	~NewGame() = default;
+};
+
+class JoinGame : public View
+{
+public:
+	JoinGame()
+	{
+		type = ViewType::JoinGame;
+	}
+
+	~JoinGame() = default;
+};
+
+class PlayGame : public View
+{
+public:
+	PlayGame()
+	{
+		type = ViewType::PlayGame;
+	}
+
+	~PlayGame() = default;
+};
+
+class Pause : public View
+{
+public:
+	Pause()
+	{
+		type = ViewType::Pause;
+	}
+
+	~Pause() = default;
+};
+
+class ViewManager
+{
+private:
+	std::vector<View*> views_;
+	View* active = nullptr;
+
+public:
+	ViewManager()
+	{
+		views_.push_back(new MainMenu);
+		views_.push_back(new NewGame);
+		views_.push_back(new JoinGame);
+		views_.push_back(new PlayGame);
+		views_.push_back(new Pause);
+
+		active = views_[0];
+	}
+
+	~ViewManager() = default;
+
+	void setActive(ViewType type)
+	{
+		for (int i = 0; i < views_.size(); i++)
+		{
+			if (views_[i]->getType() == type)
+			{
+				active = views_[i];
+				return;
+			}
+		}
+	}
+
+	void interactMouse(sf::Vector2f mouse_position)
+	{
+
+	}
+};
+
+class GameManager
+{
+private:
 	Paddle* player_1_ = nullptr;
 	Paddle* player_2_ = nullptr;
 
@@ -198,14 +401,14 @@ private:
 	bool last_collision_check_ = false;
 
 public:
-	Game()
+	GameManager()
 	{
 		player_1_ = new Paddle(0.0f, sf::Color::Cyan);
 		player_2_ = new Paddle(1870.0f, sf::Color::Magenta);
 		ball = new Ball;
 	}
 
-	~Game()
+	~GameManager()
 	{
 		delete player_1_;
 		player_1_ = nullptr;
@@ -289,6 +492,10 @@ public:
 
 int main()
 {
+	std::cout << std::filesystem::current_path() << '\n';
+
+	std::cout << std::filesystem::exists("Fonts/Scifi2k2.ttf") << '\n';
+
 	sf::VideoMode mode(sf::Vector2u{ 1920, 1080 }, 32U);
 	sf::RenderWindow window(mode, "Multipong", sf::Style::Close, sf::State::Windowed);
 	window.setVerticalSyncEnabled(true);
@@ -300,12 +507,14 @@ int main()
 
 	float accumulator = 0;
 
-	Game game;
+	GameManager game;
 
 	InputPacket packet_p1;
 	InputPacket packet_p2;
 	packet_p1.player_index = 1;
 	packet_p2.player_index = 2;
+
+	Button test({ 100, 100 }, { 600, 50 }, "przycisk testowy", sf::Color::Red);
 
 	while (window.isOpen())
 	{
@@ -352,6 +561,15 @@ int main()
 			packet_p2.s = false;
 		}
 
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Q))
+		{
+			test.dimDown();
+		}
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::E))
+		{
+			test.lightUp();
+		}
+
 		window.clear(sf::Color::Black);
 
 		accumulator += delta_time;
@@ -367,6 +585,7 @@ int main()
 
 		float alfa_time = accumulator / fixed_delta;
 		game.draw(window, alfa_time);
+		test.draw(window, alfa_time);
 
 		window.display();
 	}
