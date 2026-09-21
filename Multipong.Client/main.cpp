@@ -40,7 +40,9 @@ public:
 	Interactive() = default;
 	virtual ~Interactive() = default;
 	virtual void onClick() = 0;
-	virtual void hoveredOver(sf::Vector2f& mouse_position) = 0;
+	virtual void hoveredOver() = 0;
+	virtual void notHoveredOver() = 0;
+	virtual bool checkMouseOverlap(sf::Vector2f& mouse_wrld_pos) = 0;
 };
 
 enum class PacketType
@@ -219,7 +221,6 @@ private:
 	sf::Text text_;
 
 	std::function<void()> on_click_;
-
 public:
 	Button(sf::Vector2f position, sf::Vector2f size, std::string text, sf::Color color, std::function<void()> on_click) : font_(sf::Font("Fonts/Scifi2k2.ttf")), text_(sf::Text(font_, text, size.y - size.y / 2)), on_click_(on_click)
 	{
@@ -241,16 +242,14 @@ public:
 		window.draw(text_);
 	}
 
-	void hoveredOver(sf::Vector2f& mouse_position)
+	void hoveredOver()
 	{
-		if (shape_.getGlobalBounds().contains(mouse_position))
-		{
-			lightUp();
-		}
-		else
-		{
-			dimDown();
-		}
+		lightUp();
+	}
+
+	void notHoveredOver()
+	{
+		dimDown();
 	}
 
 	virtual void onClick()
@@ -279,6 +278,11 @@ public:
 		text_color.a = 155;
 		text_.setFillColor(text_color);
 	}
+
+	virtual bool checkMouseOverlap(sf::Vector2f& mouse_wrld_pos)
+	{
+		return(shape_.getGlobalBounds().contains(mouse_wrld_pos));
+	}
 };
 
 class View
@@ -303,6 +307,27 @@ public:
 			d->draw(window, alfa_time);
 		}
 	}
+
+	void process(sf::Vector2f& mouse_wrld_pos, bool& was_mouse_unclicked)
+	{
+		for (Interactive* i : interactives_)
+		{
+			if (i->checkMouseOverlap(mouse_wrld_pos))
+			{
+				if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left) && was_mouse_unclicked)
+				{
+					i->onClick();
+					was_mouse_unclicked = false;
+				}
+
+				i->hoveredOver();
+			}
+			else
+			{
+				i->notHoveredOver();
+			}
+		}
+	}
 };
 
 class ViewManager
@@ -310,10 +335,10 @@ class ViewManager
 private:
 	std::vector<View*> views_;
 	View* active = nullptr;
+	bool was_mouse_unclicked = true;
 
 public:
 	ViewManager() = default;
-
 	~ViewManager() = default;
 
 	void setActive(ViewType type)
@@ -328,11 +353,6 @@ public:
 		}
 	}
 
-	void interactMouse(sf::Vector2f mouse_position)
-	{
-
-	}
-
 	void drawActiveView(sf::RenderWindow& window, float& alfa_time)
 	{
 		if (active)
@@ -345,18 +365,28 @@ public:
 	{
 		views_.push_back(view);
 	}
+
+	void processActiveView(sf::Vector2f& mouse_wrld_pos)
+	{
+		if (!sf::Mouse::isButtonPressed(sf::Mouse::Button::Left))
+		{
+			was_mouse_unclicked = true;
+		}
+
+		active->process(mouse_wrld_pos, was_mouse_unclicked);
+	}
 };
 
 class MainMenu : public View
 {
 public:
-	MainMenu(ViewManager& view_manager)
+	MainMenu(ViewManager& view_manager, sf::RenderWindow& window)
 	{
 		type = ViewType::MainMenu;
 
 		Button* start_new = new Button(sf::Vector2f{ 710, 390 }, sf::Vector2f{ 500, 50 }, "Start New", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::NewGame); });
-		Button* join = new Button(sf::Vector2f{ 710, 490 }, sf::Vector2f{ 500, 50 }, "Join Game", sf::Color::Blue, []() {});
-		Button* exit = new Button(sf::Vector2f{ 710, 590 }, sf::Vector2f{ 500, 50 }, "Exit", sf::Color::Blue, []() {});
+		Button* join = new Button(sf::Vector2f{ 710, 490 }, sf::Vector2f{ 500, 50 }, "Join Game", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::JoinGame); });
+		Button* exit = new Button(sf::Vector2f{ 710, 590 }, sf::Vector2f{ 500, 50 }, "Exit", sf::Color::Blue, [&window]() { window.close(); });
 
 		drawables_.push_back(start_new);
 		drawables_.push_back(join);
@@ -377,10 +407,13 @@ public:
 	{
 		type = ViewType::NewGame;
 
+		Button* host = new Button(sf::Vector2f{ 710, 490 }, sf::Vector2f{ 500, 50 }, "Host", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::PlayGame); });
 		Button* go_back = new Button(sf::Vector2f{ 710, 590 }, sf::Vector2f{ 500, 50 }, "Return", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::MainMenu); });
 
+		drawables_.push_back(host);
 		drawables_.push_back(go_back);
 
+		interactives_.push_back(host);
 		interactives_.push_back(go_back);
 	}
 
@@ -393,6 +426,15 @@ public:
 	JoinGame(ViewManager& view_manager)
 	{
 		type = ViewType::JoinGame;
+
+		Button* join = new Button(sf::Vector2f{ 710, 490 }, sf::Vector2f{ 500, 50 }, "Join", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::PlayGame); });
+		Button* go_back = new Button(sf::Vector2f{ 710, 590 }, sf::Vector2f{ 500, 50 }, "Return", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::MainMenu); });
+
+		drawables_.push_back(join);
+		drawables_.push_back(go_back);
+
+		interactives_.push_back(join);
+		interactives_.push_back(go_back);
 	}
 
 	~JoinGame() = default;
@@ -415,6 +457,15 @@ public:
 	Pause(ViewManager& view_manager)
 	{
 		type = ViewType::Pause;
+
+		Button* resume = new Button(sf::Vector2f{ 710, 490 }, sf::Vector2f{ 500, 50 }, "Resume", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::PlayGame); });
+		Button* close = new Button(sf::Vector2f{ 710, 590 }, sf::Vector2f{ 500, 50 }, "Close Server", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::MainMenu); });
+
+		drawables_.push_back(resume);
+		drawables_.push_back(close);
+
+		interactives_.push_back(resume);
+		interactives_.push_back(close);
 	}
 
 	~Pause() = default;
@@ -550,7 +601,7 @@ int main()
 	packet_p2.player_index = 2;
 
 	ViewManager view_manager;
-	view_manager.addView(new MainMenu(view_manager));
+	view_manager.addView(new MainMenu(view_manager, window));
 	view_manager.addView(new NewGame(view_manager));
 	view_manager.addView(new JoinGame(view_manager));
 	view_manager.addView(new PlayGame(view_manager));
@@ -602,6 +653,11 @@ int main()
 			packet_p2.s = false;
 		}
 
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Escape))
+		{
+			view_manager.setActive(ViewType::Pause);
+		}
+
 		window.clear(sf::Color::Black);
 
 		accumulator += delta_time;
@@ -612,6 +668,11 @@ int main()
 			game_manager.takeInput(packet_p2);
 
 			game_manager.simulate(fixed_delta);
+
+			sf::Vector2i mouse_pos = sf::Mouse::getPosition();
+			sf::Vector2f mouse_wrld_pos = window.mapPixelToCoords(mouse_pos);
+
+			view_manager.processActiveView(mouse_wrld_pos);
 			accumulator -= fixed_delta;
 		}
 
