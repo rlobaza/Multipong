@@ -218,10 +218,10 @@ private:
 	sf::Font font_;
 	sf::Text text_;
 
-	std::function<void()> on_click;
+	std::function<void()> on_click_;
 
 public:
-	Button(sf::Vector2f position, sf::Vector2f size, std::string text, sf::Color color) : font_(sf::Font("Fonts/Scifi2k2.ttf")), text_(sf::Text(font_, text, size.y - size.y / 2))
+	Button(sf::Vector2f position, sf::Vector2f size, std::string text, sf::Color color, std::function<void()> on_click) : font_(sf::Font("Fonts/Scifi2k2.ttf")), text_(sf::Text(font_, text, size.y - size.y / 2)), on_click_(on_click)
 	{
 		shape_.setPosition(position);
 		shape_.setSize(size);
@@ -251,6 +251,11 @@ public:
 		{
 			dimDown();
 		}
+	}
+
+	virtual void onClick()
+	{
+		on_click_();
 	}
 
 	void lightUp()
@@ -290,61 +295,14 @@ public:
 	virtual ~View() = default;
 
 	ViewType getType() { return type; }
-};
 
-class MainMenu : public View
-{
-public:
-	MainMenu()
+	void draw(sf::RenderWindow& window, float& alfa_time)
 	{
-		type = ViewType::MainMenu;
+		for (Drawable* d : drawables_)
+		{
+			d->draw(window, alfa_time);
+		}
 	}
-
-	~MainMenu() = default;
-};
-
-class NewGame : public View
-{
-public:
-	NewGame()
-	{
-		type = ViewType::NewGame;
-	}
-
-	~NewGame() = default;
-};
-
-class JoinGame : public View
-{
-public:
-	JoinGame()
-	{
-		type = ViewType::JoinGame;
-	}
-
-	~JoinGame() = default;
-};
-
-class PlayGame : public View
-{
-public:
-	PlayGame()
-	{
-		type = ViewType::PlayGame;
-	}
-
-	~PlayGame() = default;
-};
-
-class Pause : public View
-{
-public:
-	Pause()
-	{
-		type = ViewType::Pause;
-	}
-
-	~Pause() = default;
 };
 
 class ViewManager
@@ -354,16 +312,7 @@ private:
 	View* active = nullptr;
 
 public:
-	ViewManager()
-	{
-		views_.push_back(new MainMenu);
-		views_.push_back(new NewGame);
-		views_.push_back(new JoinGame);
-		views_.push_back(new PlayGame);
-		views_.push_back(new Pause);
-
-		active = views_[0];
-	}
+	ViewManager() = default;
 
 	~ViewManager() = default;
 
@@ -383,6 +332,92 @@ public:
 	{
 
 	}
+
+	void drawActiveView(sf::RenderWindow& window, float& alfa_time)
+	{
+		if (active)
+		{
+			active->draw(window, alfa_time);
+		}
+	}
+
+	void addView(View* view)
+	{
+		views_.push_back(view);
+	}
+};
+
+class MainMenu : public View
+{
+public:
+	MainMenu(ViewManager& view_manager)
+	{
+		type = ViewType::MainMenu;
+
+		Button* start_new = new Button(sf::Vector2f{ 710, 390 }, sf::Vector2f{ 500, 50 }, "Start New", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::NewGame); });
+		Button* join = new Button(sf::Vector2f{ 710, 490 }, sf::Vector2f{ 500, 50 }, "Join Game", sf::Color::Blue, []() {});
+		Button* exit = new Button(sf::Vector2f{ 710, 590 }, sf::Vector2f{ 500, 50 }, "Exit", sf::Color::Blue, []() {});
+
+		drawables_.push_back(start_new);
+		drawables_.push_back(join);
+		drawables_.push_back(exit);
+
+		interactives_.push_back(start_new);
+		interactives_.push_back(join);
+		interactives_.push_back(exit);
+	}
+
+	~MainMenu() = default;
+};
+
+class NewGame : public View
+{
+public:
+	NewGame(ViewManager& view_manager)
+	{
+		type = ViewType::NewGame;
+
+		Button* go_back = new Button(sf::Vector2f{ 710, 590 }, sf::Vector2f{ 500, 50 }, "Return", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::MainMenu); });
+
+		drawables_.push_back(go_back);
+
+		interactives_.push_back(go_back);
+	}
+
+	~NewGame() = default;
+};
+
+class JoinGame : public View
+{
+public:
+	JoinGame(ViewManager& view_manager)
+	{
+		type = ViewType::JoinGame;
+	}
+
+	~JoinGame() = default;
+};
+
+class PlayGame : public View
+{
+public:
+	PlayGame(ViewManager& view_manager)
+	{
+		type = ViewType::PlayGame;
+	}
+
+	~PlayGame() = default;
+};
+
+class Pause : public View
+{
+public:
+	Pause(ViewManager& view_manager)
+	{
+		type = ViewType::Pause;
+	}
+
+	~Pause() = default;
 };
 
 class GameManager
@@ -507,14 +542,20 @@ int main()
 
 	float accumulator = 0;
 
-	GameManager game;
+	GameManager game_manager;
 
 	InputPacket packet_p1;
 	InputPacket packet_p2;
 	packet_p1.player_index = 1;
 	packet_p2.player_index = 2;
 
-	// Button test({ 100, 100 }, { 600, 50 }, "przycisk testowy", sf::Color::Green);
+	ViewManager view_manager;
+	view_manager.addView(new MainMenu(view_manager));
+	view_manager.addView(new NewGame(view_manager));
+	view_manager.addView(new JoinGame(view_manager));
+	view_manager.addView(new PlayGame(view_manager));
+	view_manager.addView(new Pause(view_manager));
+	view_manager.setActive(ViewType::MainMenu);
 
 	while (window.isOpen())
 	{
@@ -561,31 +602,22 @@ int main()
 			packet_p2.s = false;
 		}
 
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Q))
-		{
-			// test.dimDown();
-		}
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::E))
-		{
-			// test.lightUp();
-		}
-
 		window.clear(sf::Color::Black);
 
 		accumulator += delta_time;
 
 		while (accumulator > fixed_delta)
 		{
-			game.takeInput(packet_p1);
-			game.takeInput(packet_p2);
+			game_manager.takeInput(packet_p1);
+			game_manager.takeInput(packet_p2);
 
-			game.simulate(fixed_delta);
+			game_manager.simulate(fixed_delta);
 			accumulator -= fixed_delta;
 		}
 
 		float alfa_time = accumulator / fixed_delta;
-		game.draw(window, alfa_time);
-		// test.draw(window, alfa_time);
+		game_manager.draw(window, alfa_time);
+		view_manager.drawActiveView(window, alfa_time);
 
 		window.display();
 	}
