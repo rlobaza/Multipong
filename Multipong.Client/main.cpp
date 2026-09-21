@@ -6,6 +6,7 @@
 #include <vector>
 #include <iostream>
 #include <filesystem>
+#include <functional>
 
 enum class ViewType
 {
@@ -40,22 +41,6 @@ public:
 	virtual ~Interactive() = default;
 	virtual void onClick() = 0;
 	virtual void hoveredOver(sf::Vector2f& mouse_position) = 0;
-};
-
-class View
-{
-protected:
-	std::vector<Simulatable*> simulatables_;
-	std::vector<Drawable*> drawables_;
-	std::vector<Interactive*> interactives_;
-
-	ViewType type = ViewType::Unknown;
-
-public:
-	View() = default;
-	virtual ~View() = default;
-
-	ViewType getType() { return type; }
 };
 
 enum class PacketType
@@ -233,6 +218,8 @@ private:
 	sf::Font font_;
 	sf::Text text_;
 
+	std::function<void()> on_click;
+
 public:
 	Button(sf::Vector2f position, sf::Vector2f size, std::string text, sf::Color color) : font_(sf::Font("Fonts/Scifi2k2.ttf")), text_(sf::Text(font_, text, size.y - size.y / 2))
 	{
@@ -252,11 +239,6 @@ public:
 	{
 		window.draw(shape_);
 		window.draw(text_);
-	}
-
-	void onClick()
-	{
-
 	}
 
 	void hoveredOver(sf::Vector2f& mouse_position)
@@ -292,6 +274,22 @@ public:
 		text_color.a = 155;
 		text_.setFillColor(text_color);
 	}
+};
+
+class View
+{
+protected:
+	std::vector<Simulatable*> simulatables_;
+	std::vector<Drawable*> drawables_;
+	std::vector<Interactive*> interactives_;
+
+	ViewType type = ViewType::Unknown;
+
+public:
+	View() = default;
+	virtual ~View() = default;
+
+	ViewType getType() { return type; }
 };
 
 class MainMenu : public View
@@ -497,8 +495,10 @@ int main()
 	std::cout << std::filesystem::exists("Fonts/Scifi2k2.ttf") << '\n';
 
 	sf::VideoMode mode(sf::Vector2u{ 1920, 1080 }, 32U);
-	sf::RenderWindow window(mode, "Multipong", sf::Style::Close, sf::State::Windowed);
+	sf::RenderWindow window(mode, "Multipong", sf::Style::Close, sf::State::Fullscreen);
 	window.setVerticalSyncEnabled(true);
+	sf::View view(window.getDefaultView().getCenter(), sf::Vector2f{1920, 1080});
+	window.setView(view);
 
 	sf::Clock clk;
 
@@ -514,7 +514,7 @@ int main()
 	packet_p1.player_index = 1;
 	packet_p2.player_index = 2;
 
-	Button test({ 100, 100 }, { 600, 50 }, "przycisk testowy", sf::Color::Red);
+	// Button test({ 100, 100 }, { 600, 50 }, "przycisk testowy", sf::Color::Green);
 
 	while (window.isOpen())
 	{
@@ -563,11 +563,11 @@ int main()
 
 		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Q))
 		{
-			test.dimDown();
+			// test.dimDown();
 		}
 		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::E))
 		{
-			test.lightUp();
+			// test.lightUp();
 		}
 
 		window.clear(sf::Color::Black);
@@ -585,7 +585,7 @@ int main()
 
 		float alfa_time = accumulator / fixed_delta;
 		game.draw(window, alfa_time);
-		test.draw(window, alfa_time);
+		// test.draw(window, alfa_time);
 
 		window.display();
 	}
