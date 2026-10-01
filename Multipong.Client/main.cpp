@@ -286,6 +286,37 @@ public:
 	}
 };
 
+class Textbox : public Drawable
+{
+protected:
+	sf::RectangleShape shape_;
+	sf::Font font_;
+	sf::Text text_;
+	std::string& string_;
+
+public:
+	Textbox(sf::Vector2f position, sf::Vector2f size, std::string& str) : font_(sf::Font("Fonts/Scifi2k2.ttf")), text_(sf::Text(font_, str, size.y - size.y / 2)), string_(str)
+	{
+		shape_.setPosition(position);
+		shape_.setSize(size);
+
+		text_.setOrigin(text_.getLocalBounds().getCenter());
+		text_.setPosition(shape_.getGlobalBounds().getCenter());
+	}
+
+	virtual ~Textbox() = default;
+
+	virtual void draw(sf::RenderWindow& window, float& alfa_time)
+	{
+		window.draw(text_);
+	}
+
+	void update()
+	{
+		text_.setString(sf::String(string_));
+	}
+};
+
 class View
 {
 protected:
@@ -400,11 +431,15 @@ public:
 	MainMenu(ViewManager& view_manager, sf::RenderWindow& window)
 	{
 		type = ViewType::MainMenu;
+		std::string game_logo_str = "Multipong";
+
+		Textbox* game_logo = new Textbox(sf::Vector2f{ 0, 25 }, sf::Vector2f{ 1920, 500}, game_logo_str);
 
 		Button* start_new = new Button(sf::Vector2f{ 710, 390 }, sf::Vector2f{ 500, 50 }, "Start New", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::NewGame); });
 		Button* join = new Button(sf::Vector2f{ 710, 490 }, sf::Vector2f{ 500, 50 }, "Join Game", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::JoinGame); });
 		Button* exit = new Button(sf::Vector2f{ 710, 590 }, sf::Vector2f{ 500, 50 }, "Exit", sf::Color::Blue, [&window]() { window.close(); });
 
+		drawables_.push_back(game_logo);
 		drawables_.push_back(start_new);
 		drawables_.push_back(join);
 		drawables_.push_back(exit);
@@ -611,6 +646,75 @@ public:
 	}
 };
 
+class FpsMeter : public Drawable
+{
+private:
+	static const int number_of_samples_ = 10;
+	int max_visual_update_fps_;
+	float samples_[number_of_samples_];
+	std::string fps_string_ = "fps: N/A";
+	int next_sample_ = 0;
+	Textbox textbox_;
+	float time_till_next_update_ = 0;
+
+public:
+	FpsMeter(sf::Vector2f position, sf::Vector2f size, int max_fps) : textbox_(position, size, fps_string_), max_visual_update_fps_(max_fps)
+	{
+		time_till_next_update_ = 1.0f / max_visual_update_fps_;
+		std::cout << time_till_next_update_ << std::endl;
+
+		for (int i = 0; i < number_of_samples_; i++)
+		{
+			samples_[i] = 0.0f;
+		}
+	}
+
+	~FpsMeter() = default;
+
+	void updateString()
+	{
+		float sum = 0.0f;
+
+		for (int i = 0; i < number_of_samples_; i++)
+		{
+			sum += samples_[i];
+		}
+		
+		float calculated_fps = sum / number_of_samples_;
+
+		fps_string_ = "fps: " + std::to_string(int(calculated_fps));
+	}
+
+	void takeSample(float time)
+	{
+		samples_[next_sample_] = 1.0f / time;
+
+		if (next_sample_ == number_of_samples_ - 1)
+		{
+			next_sample_ = 0;
+		}
+		else
+		{
+			next_sample_++;
+		}
+	}
+
+	virtual void draw(sf::RenderWindow& window, float& delta_time)
+	{
+		time_till_next_update_ -= delta_time;
+
+		if (time_till_next_update_ < 0)
+		{
+			updateString();
+			textbox_.update();
+			time_till_next_update_ = 1.0f / max_visual_update_fps_;
+		}
+
+		textbox_.draw(window, delta_time);
+	}
+
+};
+
 int main()
 {
 	std::cout << std::filesystem::current_path() << '\n';
@@ -625,7 +729,7 @@ int main()
 
 	sf::Clock clk;
 
-	float simulation_fps = 60.0f;
+	float simulation_fps = 256.0f;
 	float fixed_delta = 1.0f / simulation_fps;
 
 	float accumulator = 0;
@@ -645,6 +749,8 @@ int main()
 	view_manager.addView(new PauseHost(view_manager));
 	view_manager.addView(new PauseClient(view_manager));
 	view_manager.setActive(ViewType::MainMenu);
+
+	FpsMeter fps_meter(sf::Vector2f{ 1720, 0 }, sf::Vector2f{ 200, 50 }, 3);
 
 	while (window.isOpen())
 	{
@@ -723,8 +829,10 @@ int main()
 
 		float alfa_time = accumulator / fixed_delta;
 		game_manager.draw(window, alfa_time);
+		fps_meter.draw(window, delta_time);
 		view_manager.drawActiveView(window, alfa_time);
 
+		fps_meter.takeSample(delta_time);
 		window.display();
 	}
 
