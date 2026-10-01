@@ -14,7 +14,8 @@ enum class ViewType
 	NewGame,
 	JoinGame,
 	PlayGame,
-	Pause,
+	PauseHost,
+	PauseClient,
 	Unknown
 };
 
@@ -334,8 +335,9 @@ class ViewManager
 {
 private:
 	std::vector<View*> views_;
-	View* active = nullptr;
-	bool was_mouse_unclicked = true;
+	View* active_ = nullptr;
+	bool was_mouse_unclicked_ = true;
+	bool is_host_ = false;
 
 public:
 	ViewManager() = default;
@@ -347,7 +349,17 @@ public:
 		{
 			if (views_[i]->getType() == type)
 			{
-				active = views_[i];
+				active_ = views_[i];
+
+				if (views_[i]->getType() == ViewType::NewGame)
+				{
+					is_host_ = true;
+				}
+				else if (views_[i]->getType() == ViewType::JoinGame)
+				{
+					is_host_ = false;
+				}
+
 				return;
 			}
 		}
@@ -355,9 +367,9 @@ public:
 
 	void drawActiveView(sf::RenderWindow& window, float& alfa_time)
 	{
-		if (active)
+		if (active_)
 		{
-			active->draw(window, alfa_time);
+			active_->draw(window, alfa_time);
 		}
 	}
 
@@ -370,10 +382,15 @@ public:
 	{
 		if (!sf::Mouse::isButtonPressed(sf::Mouse::Button::Left))
 		{
-			was_mouse_unclicked = true;
+			was_mouse_unclicked_ = true;
 		}
 
-		active->process(mouse_wrld_pos, was_mouse_unclicked);
+		active_->process(mouse_wrld_pos, was_mouse_unclicked_);
+	}
+
+	bool& getIsHost()
+	{
+		return is_host_;
 	}
 };
 
@@ -451,12 +468,12 @@ public:
 	~PlayGame() = default;
 };
 
-class Pause : public View
+class PauseHost : public View
 {
 public:
-	Pause(ViewManager& view_manager)
+	PauseHost(ViewManager& view_manager)
 	{
-		type = ViewType::Pause;
+		type = ViewType::PauseHost;
 
 		Button* resume = new Button(sf::Vector2f{ 710, 490 }, sf::Vector2f{ 500, 50 }, "Resume", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::PlayGame); });
 		Button* close = new Button(sf::Vector2f{ 710, 590 }, sf::Vector2f{ 500, 50 }, "Close Server", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::MainMenu); });
@@ -468,7 +485,27 @@ public:
 		interactives_.push_back(close);
 	}
 
-	~Pause() = default;
+	~PauseHost() = default;
+};
+
+class PauseClient : public View
+{
+public:
+	PauseClient(ViewManager& view_manager)
+	{
+		type = ViewType::PauseClient;
+
+		Button* resume = new Button(sf::Vector2f{ 710, 490 }, sf::Vector2f{ 500, 50 }, "Resume", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::PlayGame); });
+		Button* close = new Button(sf::Vector2f{ 710, 590 }, sf::Vector2f{ 500, 50 }, "Leave Server", sf::Color::Blue, [&view_manager]() { view_manager.setActive(ViewType::MainMenu); });
+
+		drawables_.push_back(resume);
+		drawables_.push_back(close);
+
+		interactives_.push_back(resume);
+		interactives_.push_back(close);
+	}
+
+	~PauseClient() = default;
 };
 
 class GameManager
@@ -605,7 +642,8 @@ int main()
 	view_manager.addView(new NewGame(view_manager));
 	view_manager.addView(new JoinGame(view_manager));
 	view_manager.addView(new PlayGame(view_manager));
-	view_manager.addView(new Pause(view_manager));
+	view_manager.addView(new PauseHost(view_manager));
+	view_manager.addView(new PauseClient(view_manager));
 	view_manager.setActive(ViewType::MainMenu);
 
 	while (window.isOpen())
@@ -655,7 +693,14 @@ int main()
 
 		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Escape))
 		{
-			view_manager.setActive(ViewType::Pause);
+			if (view_manager.getIsHost())
+			{
+				view_manager.setActive(ViewType::PauseHost);
+			}
+			else
+			{
+				view_manager.setActive(ViewType::PauseClient);
+			}
 		}
 
 		window.clear(sf::Color::Black);
