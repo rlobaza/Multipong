@@ -167,15 +167,17 @@ public:
 
 	int checkScore()
 	{
-		if (pos_.x <= 0 - shape_.getRadius())
+		if (pos_.x <= 0 - 2 * shape_.getRadius())
 		{
-			centerPosition();
 			return 2;
 		}
-		if (pos_.x >= 1920 + shape_.getRadius())
+		else if (pos_.x >= 1920)
 		{
-			centerPosition();
 			return 1;
+		}
+		else
+		{
+			return 0;
 		}
 	}
 
@@ -300,8 +302,7 @@ public:
 		shape_.setPosition(position);
 		shape_.setSize(size);
 
-		text_.setOrigin(text_.getLocalBounds().getCenter());
-		text_.setPosition(shape_.getGlobalBounds().getCenter());
+		centerText();
 	}
 
 	virtual ~Textbox() = default;
@@ -314,6 +315,12 @@ public:
 	void update()
 	{
 		text_.setString(sf::String(string_));
+	}
+
+	void centerText()
+	{
+		text_.setOrigin(text_.getLocalBounds().getCenter());
+		text_.setPosition(shape_.getGlobalBounds().getCenter());
 	}
 };
 
@@ -543,21 +550,100 @@ public:
 	~PauseClient() = default;
 };
 
+class ScoreCounter : public Drawable
+{
+private:
+	int score_p1_ = 0;
+	int score_p2_ = 0;
+
+	Textbox textbox_s1_;
+	Textbox textbox_s2_;
+
+	std::string string_s1_ = "N/A";
+	std::string string_s2_ = "N/A";
+
+public:
+	ScoreCounter(sf::Vector2f position, sf::Vector2f size) : textbox_s1_(position, sf::Vector2f{ size.x / 2, size.y / 2 }, string_s1_), textbox_s2_(sf::Vector2f{ position.x + size.x / 2, position.y }, sf::Vector2f{ size.x / 2, size.y / 2 }, string_s2_)
+	{
+		updateStrings();
+	}
+
+	~ScoreCounter() = default;
+
+	void resetScore()
+	{
+		score_p1_ = 0;
+		score_p2_ = 0;
+
+		updateStrings();
+	}
+
+	void givePoint(int player_index)
+	{
+		if (player_index != 0)
+		{
+			if (player_index == 1)
+			{
+				score_p1_++;
+			}
+			else if (player_index == 2)
+			{
+				score_p2_++;
+			}
+
+			textbox_s1_.centerText();
+			textbox_s2_.centerText();
+
+			updateStrings();
+		}
+	}
+
+	int getScore(int player_index)
+	{
+		if (player_index == 1)
+		{
+			return score_p1_;
+		}
+		else if (player_index == 2)
+		{
+			return score_p2_;
+		}
+		else
+		{
+			return 0;
+		}
+	}
+
+	virtual void draw(sf::RenderWindow& window, float& delta_time)
+	{
+		textbox_s1_.draw(window, delta_time);
+		textbox_s2_.draw(window, delta_time);
+	}
+
+	void updateStrings()
+	{
+		string_s1_ = std::to_string(score_p1_);
+		string_s2_ = std::to_string(score_p2_);
+
+		textbox_s1_.update();
+		textbox_s2_.update();
+	}
+};
+
 class GameManager
 {
 private:
 	Paddle* player_1_ = nullptr;
 	Paddle* player_2_ = nullptr;
 
-	int score_p1_ = 0;
-	int score_p2_ = 0;
-
 	Ball* ball = nullptr;
 
 	bool last_collision_check_ = false;
 
+	ScoreCounter score_counter_;
+
 public:
-	GameManager()
+	GameManager() : score_counter_(sf::Vector2f{ 510, 100 }, sf::Vector2f{ 900, 300 })
 	{
 		player_1_ = new Paddle(0.0f, sf::Color::Cyan);
 		player_2_ = new Paddle(1870.0f, sf::Color::Magenta);
@@ -584,13 +670,15 @@ public:
 
 		if (ball->checkScore() == 1)
 		{
-			score_p1_++;
+			score_counter_.givePoint(1);
 			ball->resetVelocity();
+			ball->centerPosition();
 		}
 		if (ball->checkScore() == 2)
 		{
-			score_p2_++;
+			score_counter_.givePoint(2);
 			ball->resetVelocity();
+			ball->centerPosition();
 		}
 		
 		if (checkCollision(*player_1_, *ball) || checkCollision(*player_2_, *ball))
@@ -613,6 +701,7 @@ public:
 		player_1_->draw(window, alfa_time);
 		player_2_->draw(window, alfa_time);
 		ball->draw(window, alfa_time);
+		score_counter_.draw(window, alfa_time);
 	}
 
 	void takeInput(InputPacket packet)
@@ -661,7 +750,6 @@ public:
 	FpsMeter(sf::Vector2f position, sf::Vector2f size, int max_fps) : textbox_(position, size, fps_string_), max_visual_update_fps_(max_fps)
 	{
 		time_till_next_update_ = 1.0f / max_visual_update_fps_;
-		std::cout << time_till_next_update_ << std::endl;
 
 		for (int i = 0; i < number_of_samples_; i++)
 		{
@@ -712,15 +800,10 @@ public:
 
 		textbox_.draw(window, delta_time);
 	}
-
 };
 
 int main()
 {
-	std::cout << std::filesystem::current_path() << '\n';
-
-	std::cout << std::filesystem::exists("Fonts/Scifi2k2.ttf") << '\n';
-
 	sf::VideoMode mode(sf::Vector2u{ 1920, 1080 }, 32U);
 	sf::RenderWindow window(mode, "Multipong", sf::Style::Close, sf::State::Fullscreen);
 	window.setVerticalSyncEnabled(true);
